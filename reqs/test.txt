@@ -1,5 +1,7 @@
 mock>=3.0.0; python_version <= "3.7"
 pytest
 pytest-qt
+pytest-watch
+pytest-testmon
 
 # vim: ft=cfg commentstring=#\ %s list

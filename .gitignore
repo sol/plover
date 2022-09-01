@@ -15,6 +15,7 @@
 /strokes.log
 
 # Pytest.
+/.testmondata
 /.pytest_cache/
 
 # Python.
