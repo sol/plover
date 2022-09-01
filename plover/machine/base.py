@@ -157,8 +157,10 @@ class ThreadedStenotypeBase(StenotypeBase, threading.Thread):
     def _on_unhandled_exception(self, action):
         super_invoke_excepthook = self._invoke_excepthook
         def invoke_excepthook(self):
-            action()
-            super_invoke_excepthook(self)
+            try:
+                action()
+            finally:
+                super_invoke_excepthook(self)
         self._invoke_excepthook = invoke_excepthook
 
     def run(self):
@@ -209,6 +211,7 @@ class SerialStenotypeBase(ThreadedStenotypeBase):
         ThreadedStenotypeBase.__init__(self)
         self.serial_port = None
         self.serial_params = serial_params
+        self._on_unhandled_exception(self._close_port)
 
     def _close_port(self):
         if self.serial_port is None:
