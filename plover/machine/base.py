@@ -8,6 +8,7 @@
 
 import binascii
 import threading
+import time
 
 import serial
 
@@ -219,22 +220,27 @@ class SerialStenotypeBase(ThreadedStenotypeBase):
         self.serial_port.close()
         self.serial_port = None
 
-    def start_capture(self):
+    def _connect(self):
         self._close_port()
 
         try:
             self.serial_port = serial.Serial(**self.serial_params)
         except (serial.SerialException, OSError):
-            log.warning('Can\'t open serial port', exc_info=True)
-            self._error()
-            return
+            # log.warning('Can\'t open serial port', exc_info=True)
+            return False
 
         if not self.serial_port.isOpen():
-            log.warning('Serial port is not open: %s', self.serial_params.get('port'))
-            self._error()
-            return
+            # log.warning('Serial port is not open: %s', self.serial_params.get('port'))
+            return False
 
-        return ThreadedStenotypeBase.start_capture(self)
+        return True
+
+    def start_capture(self):
+        if self._connect():
+            return ThreadedStenotypeBase.start_capture(self)
+        else:
+            self._error()
+
 
     def stop_capture(self):
         """Stop listening for output from the stenotype machine."""
@@ -275,17 +281,33 @@ class SerialStenotypeBase(ThreadedStenotypeBase):
             self.serial_params.get('timeout', 1.0) / packet_size,
             0.01,
         )
-        packet = b''
         while not self.finished.is_set():
-            raw = self.serial_port.read(packet_size - len(packet))
-            if not raw:
-                if packet:
-                    log.error('discarding incomplete packet: %s',
-                              binascii.hexlify(packet))
-                packet = b''
-                continue
-            packet += raw
-            if len(packet) != packet_size:
-                continue
-            yield packet
+            packet = self._read_packet(packet_size)
+            if packet:
+                yield packet
+
+    def _read_packet(self, packet_size):
+        try:
             packet = b''
+            while not self.finished.is_set():
+                raw = self.serial_port.read(packet_size - len(packet))
+                if not raw:
+                    if packet:
+                        log.error('discarding incomplete packet: %s',
+                                binascii.hexlify(packet))
+                    packet = b''
+                    continue
+                packet += raw
+                if len(packet) != packet_size:
+                    continue
+                return packet
+        except serial.SerialException:
+            self._reconnect()
+
+    def _reconnect(self):
+        self._stopped()
+        while not self.finished.is_set():
+            time.sleep(0.1)
+            if self._connect():
+                self._ready()
+                return
